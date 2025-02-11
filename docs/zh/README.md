@@ -34,8 +34,6 @@ def selection_tournament(algorithm, tourn_size):
         sel_index.append(max(aspirants_index, key=lambda i: FitV[i]))
     algorithm.Chrom = algorithm.Chrom[sel_index, :]  # next generation
     return algorithm.Chrom
-
-
 ```
 
 导入包，并且创建遗传算法实例  
