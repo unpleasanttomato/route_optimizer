@@ -1,4 +1,3 @@
-import random
 
 import numpy as np
 from utils.MyDrawer import MyDrawer
@@ -19,9 +18,9 @@ num_points = 50 # 单次贴装任务的贴装点总数
 num_types = 8   # 单次贴装任务的镍片种类数
 
 # 为方便进行拾取优化，定义全局变量
-pickup_path = []
-pickup_p0 = []
-global_path = []
+pickup_path = []    # 局部拾取路径
+pickup_p0 = []      # 拾取过程起始点
+global_path = []    # 全局路径存储变量
 
 # 创建PCB对象
 pcb = PCB(num_points, num_types)
@@ -30,17 +29,17 @@ nozzle = Nozzle()
 
 
 ############################### 测试代码 ##############################################
-
-pickup_p0 = nozzle.p0
-pickup_path = [[125, 1000], [325, 1000], [525, 1000], [725, 1000],
-               [125, 195], [325, 195], [525, 195], [725, 195]]
+#
+# pickup_p0 = nozzle.p0
+# pickup_path = [[125, 1000], [325, 1000], [525, 1000], [725, 1000],
+#                [125, 195], [325, 195], [525, 195], [725, 195]]
 # pickup_path = [[125, 1000], [325, 1000]]
 # pickup_path = [ [325, 1000]]
 # print(pickup_path)
-r = np.array(range(len(pickup_path)))
-np.random.shuffle(r)
-
-pickup_path = [pickup_path[i] for i in r]
+# r = np.array(range(len(pickup_path)))
+# np.random.shuffle(r)
+#
+# pickup_path = [pickup_path[i] for i in r]
 
 
 
@@ -48,8 +47,45 @@ pickup_path = [pickup_path[i] for i in r]
 # drawer.pickup(pickup_path)
 # cv.waitKey(0)
 # cv.destroyAllWindows()
+# print(nozzle.count()[1])
+# current_type = 6
+# nozzle.type[0] = 6
+# nozzle.state[0] = 1
+# nozzle.state[6] = 1
+# nozzle.state[2] = 1
+# a = np.array([1, 0, 1, 0, 0, 0, 1, 0])
+# print(nozzle.count(True))
+# print(nozzle.count(True) - a)
+# print(np.argmax(nozzle.count(True) - a))
+# b = [25, 23, 21, 30, 41]
+# print(pcb.count(b[1:3]))
+
+a = [6, 2, 4, 5, 1, 7, 0, 3]
+b = np.array([2, 0, 2, 1, 0, 1, 1, 2])
+c = np.array([b[i] for i in a])
+print(c)
+print(np.where(c == 1)[0])
+# print(np.where(b[a] == 0))
+
+
+
+#
+# print(np.where(nozzle.type == current_type)[0])
+# print(nozzle.state[np.where(nozzle.type == current_type)[0]])
+# print(np.any(nozzle.state[np.where(nozzle.type == current_type)[0]] == 0))
+# print(len(np.where(nozzle.state[np.where(nozzle.type == current_type)[0]] == 0)[0]))
+#
+# print(np.where((nozzle.type == current_type) & (nozzle.state == 1))[0])
+# point = pcb.point[0] - nozzle.dist[0]
+# print(point)
+# print(type(point.tolist()))
 
 ############################### 测试代码 ##############################################
+def cal_distance(p1, p2):
+    """计算两点间的距离"""
+    return np.power((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2, 1/2)
+
+
 def cal_part_distance(route):
     """计算拾取过程的局部路径"""
 
@@ -144,8 +180,8 @@ def routine2path(route):
     count_list = []  # 每轮贴装完成的贴装点数量
     order = 0  # 每轮贴装数量的计数变量
     global pickup_path, pickup_p0, global_path
-    path = [nozzle.p0]  # 记录每轮贴装路径
-    pickup_len = []
+    global_path = [nozzle.p0]  # 记录每轮贴装路径
+    global_dist = 0
     requests = np.copy(pcb.alloc)   # 备份每种镍片的贴装任务情况
     nozzle_num = nozzle.count() # 保留吸嘴杆上的吸嘴数量
 
@@ -160,7 +196,7 @@ def routine2path(route):
             # 重置拾取路径
             pickup_path = []
 
-            pickup_p0 = path[-1]
+            pickup_p0 = global_path[-1]
 
             # 判断是否需要更换吸嘴
             flag = 0 # 更换吸嘴标志
@@ -208,11 +244,46 @@ def routine2path(route):
                 options = np.where(nozzle.type == t)[0]
                 for opt in options:
                     # 坐标变换
-                    location = pcb.feeder[t] + nozzle.dist[opt]
+                    location = pcb.feeder[t] - nozzle.dist[opt]
                     pickup_path.append(location.tolist())
+                    # 更新吸嘴状态
+                    nozzle.state[opt] = 1
 
             # 模拟退火优化拾取路线
-            pickup_len.append(get_pickup_path(flag))
+            global_dist = global_dist + get_pickup_path(flag)
+            global_path = global_path + pickup_path
+
+        # 移动至下一个贴装点进行贴装
+        # 贴装前先检查贴装头上该元件数量是否符合要求
+        current_type = pcb.type[route[i]]
+        option = np.where((nozzle.type == current_type) & (nozzle.state == 1))[0]
+        if len(option) == 0:
+            # 调整贴装顺序，以保证吸嘴尽可能满载
+            left_num = sum(nozzle.state)
+            current_type = np.argmax(nozzle.count(True) - pcb.count(route[i, i+left_num]))
+            temp = np.array([pcb.type[i] for i in route])
+            exchange = np.where(temp == current_type)[0][-1]
+            # 交换贴装顺序
+            temp = route[i]
+            route[i] = route[exchange]
+            route[exchange] = temp
+
+            option = np.where((nozzle.type == current_type) & (nozzle.state == 1))[0]
+
+        # 移动至该贴装点
+        opt = option[0]
+        # 坐标变换
+        new_point = pcb.point[route[i]] - nozzle.dist[opt]
+        global_dist = global_dist + cal_distance(global_path[-1], new_point)
+        global_path.append(new_point.tolist())
+        # 更新吸嘴状态
+        nozzle.state[opt] = 0
+        requests[current_type] = requests[current_type] - 1
+
+
+
+
+
 
 
 

@@ -5,6 +5,7 @@ PCB板的相关信息与设置
 import sys
 from collections import Counter
 import numpy as np
+from sympy import false
 
 point_range = [[220, 360], [630, 720]]  # 贴装点坐标范围，即贴装点位于治具盘范围内
 
@@ -45,6 +46,11 @@ class PCB:
         np.random.shuffle(self.type)
 
 
+    def count(self, index):
+        """统计指定区间所贴装的镍片数量"""
+        return np.bincount(self.type[index], minlength=8)
+
+
 class Nozzle:
     """定义一个吸嘴类"""
     def __init__(self):
@@ -63,10 +69,16 @@ class Nozzle:
         self.dist = np.array([[-60, 50], [-20, 50], [20, 50], [60, 50],
                                [-60, -50], [-20, -50], [20, -50], [60, -50]])
 
-    def count(self):
+    def count(self, with_state=False):
         """统计目前贴装头的各类吸嘴数量"""
-        count = Counter(self.type)
-        return np.array(list(count.values()))
+        if with_state:
+            count = np.zeros(8, dtype=int)
+            for i in range(8):
+                if self.state[i] == 1:
+                    count[self.type[i]] = count[self.type[i]] + 1
+            return count
+        else:
+            return np.bincount(self.type, minlength=8)
 
     def update(self, index, target):
         """根据需求，将对应位置的贴装杆换成对应所吸嘴"""
@@ -83,6 +95,8 @@ class Nozzle:
 if __name__ == '__main__':
     pcb = PCB(50, 8)
     nozzle = Nozzle()
-    # print(pcb.alloc)
-    print(type(nozzle.p0))
+    print(nozzle.count())
+    nozzle.type[3] = 0
+    print(nozzle.count())
+    # print(pcb.count())
 
