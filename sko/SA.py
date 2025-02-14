@@ -62,7 +62,7 @@ class SimulatedAnnealingBase(SkoBase):
         return x_new
 
     def cool_down(self):
-        self.T = self.T * 0.7
+        self.T = self.T * 0.9
 
     def isclose(self, a, b, rel_tol=1e-09, abs_tol=1e-30):
         return abs(a - b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)

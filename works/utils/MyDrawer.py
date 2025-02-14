@@ -36,7 +36,15 @@ class MyDrawer:
         cv.line(self.image, (425, 850), (425, 1150), (0, 0, 0), 1)
         cv.line(self.image, (625, 850), (625, 1150), (0, 0, 0), 1)
 
-        cv.imshow("background", self.image)
+        # cv.imshow("background", self.image)
+
+    def pickup(self, points):
+        """绘制镍片的拾取过程"""
+        for i in range(len(points)-1):
+            cv.line(self.image, points[i], points[i+1], (0, 0, 255), 2)
+            cv.circle(self.image, points[i], 3, (255, 0, 0), -1)
+        cv.circle(self.image, points[-1], 3, (255, 0, 0), -1)
+        cv.imshow("Pickup Process", self.image)
 
 
 if __name__ == '__main__':
