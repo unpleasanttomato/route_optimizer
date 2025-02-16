@@ -1,6 +1,7 @@
 
 import numpy as np
 
+from sko.GA import GA_TSP
 from utils.MyDrawer import MyDrawer
 from utils.PCB import PCB, Nozzle
 from sko.SA import SA_TSP
@@ -372,6 +373,13 @@ def mutation_udf(algorithm):
 
 
 ############################### 拾取路径 ##############################################
+
+ga_paste = GA_TSP(func=cal_global_distance, n_dim=num_points, size_pop=60, max_iter=600, prob_mut=0.5)
+ga_paste.register('selection', selection.selection_tournament, tourn_size=3)
+ga_paste.register('crossover', crossover_udf)
+ga_paste.register('mutation', mutation_udf)
+
+best_route, best_distance = ga_paste.run()
 
 route_test = np.array(range(num_points))
 np.random.shuffle(route_test)
