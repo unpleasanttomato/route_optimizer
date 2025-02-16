@@ -80,14 +80,20 @@ class Nozzle:
         else:
             return np.bincount(self.type, minlength=8)
 
-    def update(self, index, target):
+    def update(self, plan):
         """根据需求，将对应位置的贴装杆换成对应所吸嘴"""
         # 可行性检查
-        if len(index) != len(target):
-            print("可更换吸嘴数量与需更换吸嘴数量不一致")
-            sys.exit()
-
-        self.type[index] = target
+        nozzle_num = self.count()
+        while True:
+            gap = nozzle_num - plan
+            if not np.any(gap):
+                break
+            current_type = np.argmax(gap)
+            goal_type = np.argmin(gap)
+            option = np.where(self.type == current_type)[0][0]
+            self.type[option] = goal_type
+            nozzle_num[current_type] = nozzle_num[current_type] - 1
+            nozzle_num[goal_type] = nozzle_num[goal_type] + 1
         
 
 
@@ -95,8 +101,6 @@ class Nozzle:
 if __name__ == '__main__':
     pcb = PCB(50, 8)
     nozzle = Nozzle()
-    print(nozzle.count())
-    nozzle.type[3] = 0
-    print(nozzle.count())
-    # print(pcb.count())
+    # plan = np.array([1, 2, 1, 2, 0, 1, 0, 1])
+    # nozzle.update(plan)
 

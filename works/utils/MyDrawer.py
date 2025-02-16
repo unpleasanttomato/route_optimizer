@@ -5,6 +5,7 @@
 
 import cv2 as cv
 import numpy as np
+from matplotlib import pyplot as plt
 
 
 class MyDrawer:
@@ -36,6 +37,8 @@ class MyDrawer:
         cv.line(self.image, (425, 850), (425, 1150), (0, 0, 0), 1)
         cv.line(self.image, (625, 850), (625, 1150), (0, 0, 0), 1)
 
+        # cv.putText(self.image, "Round 1", (370, 40),
+        #            cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
         # cv.imshow("background", self.image)
 
     def pickup(self, points):
@@ -46,10 +49,42 @@ class MyDrawer:
         cv.circle(self.image, points[-1], 3, (255, 0, 0), -1)
         cv.imshow("Pickup Process", self.image)
 
+    def global_process(self, route):
+        """绘制镍片贴装与拾取的整体路线图"""
+        # 保存不同循环的路线图
+        order = 0
+        images = []
+        img = self.image.copy()
+        cv.circle(img, route[0], 3, (255, 0, 0), -1)
+        for i in range(1, len(route)+1):
+            if i == len(route) or route[i] == -1:
+                order = order + 1
+                # 遇到循环分隔符，则新建画板
+                # 先保存图像
+                cv.putText(img, f"Round {order}", (370, 40),
+                           cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+                # cv.imshow(f"第{order}轮拾取贴装", img)
+                cv.imwrite(f"Round_{order}.png", img)
+                images.append(img.copy())
+                if i == len(route):
+                    break
+                img = self.image.copy()
+                # 修正分隔符
+                route[i] = route[i-1]
+            else:
+                cv.line(img, route[i-1], route[i], (0, 0, 255), 2)
+
+            cv.circle(img, route[i], 3, (255, 0, 0), -1)
+
+
+
 
 if __name__ == '__main__':
-    drawer = MyDrawer()
-    drawer.background()
-
-    cv.waitKey(0)
-    cv.destroyAllWindows()
+    # drawer = MyDrawer()
+    # drawer.background()
+    #
+    # cv.waitKey(0)
+    # cv.destroyAllWindows()
+    a = [[0, 0], [0, 0], -1, [0, 0]]
+    # for i in range(1, len(a)):
+    #     print(a[i] == -1)

@@ -1,9 +1,11 @@
 
 import numpy as np
+
 from utils.MyDrawer import MyDrawer
 from utils.PCB import PCB, Nozzle
 from sko.SA import SA_TSP
 import cv2 as cv
+import time
 
 drawer = MyDrawer()
 drawer.background()
@@ -29,62 +31,96 @@ nozzle = Nozzle()
 
 
 ############################### 测试代码 ##############################################
-#
-# pickup_p0 = nozzle.p0
-# pickup_path = [[125, 1000], [325, 1000], [525, 1000], [725, 1000],
-#                [125, 195], [325, 195], [525, 195], [725, 195]]
-# pickup_path = [[125, 1000], [325, 1000]]
-# pickup_path = [ [325, 1000]]
-# print(pickup_path)
-# r = np.array(range(len(pickup_path)))
-# np.random.shuffle(r)
-#
-# pickup_path = [pickup_path[i] for i in r]
-
-
-
-
-# drawer.pickup(pickup_path)
-# cv.waitKey(0)
-# cv.destroyAllWindows()
-# print(nozzle.count()[1])
-# current_type = 6
-# nozzle.type[0] = 6
-# nozzle.state[0] = 1
-# nozzle.state[6] = 1
-# nozzle.state[2] = 1
-# a = np.array([1, 0, 1, 0, 0, 0, 1, 0])
-# print(nozzle.count(True))
-# print(nozzle.count(True) - a)
-# print(np.argmax(nozzle.count(True) - a))
-# b = [25, 23, 21, 30, 41]
-# print(pcb.count(b[1:3]))
-
-a = [6, 2, 4, 5, 1, 7, 0, 3]
-b = np.array([2, 0, 2, 1, 0, 1, 1, 2])
-c = np.array([b[i] for i in a])
-print(c)
-print(np.where(c == 1)[0])
-# print(np.where(b[a] == 0))
-
-
-
-#
-# print(np.where(nozzle.type == current_type)[0])
-# print(nozzle.state[np.where(nozzle.type == current_type)[0]])
-# print(np.any(nozzle.state[np.where(nozzle.type == current_type)[0]] == 0))
-# print(len(np.where(nozzle.state[np.where(nozzle.type == current_type)[0]] == 0)[0]))
-#
-# print(np.where((nozzle.type == current_type) & (nozzle.state == 1))[0])
-# point = pcb.point[0] - nozzle.dist[0]
-# print(point)
-# print(type(point.tolist()))
-
 ############################### 测试代码 ##############################################
+############################### 准备工作 ##############################################
+start = time.time()
+def arrange_work():
+    """根据整体贴装任务，为贴装过程进行规划"""
+    # num_loop = 0    # 贴装循环总数
+    plan_pick = []  # 保存每轮循环所贴装的各种镍片数量
+    requests = np.copy(pcb.alloc)  # 备份每种镍片的贴装任务情况
+    nozzle_num = nozzle.count()  # 保留吸嘴杆上的吸嘴数量
+    flags = []  # 每一轮循环是否更换吸嘴的标志
+
+    while sum(requests) != 0: # 循环直到所有贴装点均已完成
+        flag = 0
+        # num_loop = num_loop + 1 # 循环数增加
+        need = requests - nozzle_num
+        goal = nozzle_num  # 贴装目标与当前吸嘴数量一致
+        if np.any(need < 0):  # 当变量中存在负数，则表示若不更换吸嘴则可能存在吸嘴空载
+            if np.any(need > 0):  # 在当前吸嘴配置下，若剩下的贴装任务无法一次性完成，则进行更换吸嘴
+                flag = 1
+                change = np.where(need < 0)[0]  # 需要更换的吸嘴类型
+                number = -sum(need[change])  # 可更换吸嘴数量
+                index = np.array([], dtype=int)  # 保存可更换吸嘴所在杆索引
+                for change_type in change:
+                    change_num = -need[change_type]  # 该贴装头上该类吸嘴可更换的数量
+                    options = np.where(nozzle.type == change_type)[0]
+                    index = np.concatenate([index, options[-change_num:]])
+
+                nozzle_num[change] = nozzle_num[change] + need[change]  # 卸载
+                need[change] = 0  # 调整需求
+                target_type = np.array([], dtype=int)  # 保存所更换的吸嘴类型
+                while number > 0 and sum(need) != 0:
+                    # 贴装头上的空位且贴装需求不为零时进行安装吸嘴
+                    # 对贴装任务较多的镍片种类优先进行分配吸嘴
+                    max_value = np.max(need)
+                    max_index = np.argmax(need)
+                    if max_value >= number:
+                        # 当该种镍片的需求大于可更换吸嘴的数量，则将吸嘴全换成该种镍片对应的吸嘴
+                        nozzle_num[max_index] = nozzle_num[max_index] + number
+                        new = np.repeat(max_index, number)
+                        target_type = np.concatenate([target_type, new])
+                        number = 0  # 更换吸嘴清空，结束循环
+                    else:
+                        # 当该种镍片的需求小于可更换吸嘴的数量，则根据需求换成相应所吸嘴
+                        nozzle_num[max_index] = nozzle_num[max_index] + max_value
+                        new = np.repeat(max_index, max_value)
+                        target_type = np.concatenate([target_type, new])
+                        number = number - max_value
+                        need[max_index] = 0  # 该镍片需求清空，继续循环
+            else:
+                # 否则，贴装头上的吸嘴数量多余本轮的贴装任务，故贴装目标为剩余的贴装任务
+                goal = requests
+        flags.append(flag) # 保存变换标志
+        plan_pick.append(goal.copy())
+        requests = requests - goal
+
+    return plan_pick, flags
+
+plan_pick, flags = arrange_work()
+
+def check_fix(new_route):
+    """对每个路线进行检查与调整，令其符合贴装计划"""
+    # new_route = route.copy()
+    for i in range(len(plan_pick)):
+        sec = (i+1)*8 if (i+1)*8 < len(new_route) else len(new_route)
+        current = pcb.count(new_route[i*8:sec])
+        goal = plan_pick[i]
+        while True:
+            gap = goal - current
+            if not np.any(gap):
+                break
+            current_type = np.argmin(gap)
+            goal_type = np.argmax(gap)
+            temp = pcb.type[new_route]
+            goal_loc = np.where(temp == goal_type)[0][-1]
+            current_loc = np.where(temp[i*8:sec] == current_type)[0][0] + i*8
+
+            # 交换元素
+            t = new_route[goal_loc]
+            new_route[goal_loc] = new_route[current_loc]
+            new_route[current_loc] = t
+
+            current[goal_type] = current[goal_type] + 1
+            current[current_type] = current[current_type] - 1
+    return new_route
+print(f"准备工作完成，时间：{time.time() - start:.5f}秒")
+############################### 拾取路径 ##############################################
+
 def cal_distance(p1, p2):
     """计算两点间的距离"""
     return np.power((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2, 1/2)
-
 
 def cal_part_distance(route):
     """计算拾取过程的局部路径"""
@@ -100,7 +136,6 @@ def cal_part_distance(route):
     len_part = len_part + np.power((pickup_path[route[-1]][0] - pcb.cam[0])**2 +
                                    (pickup_path[route[-1]][1] - pcb.cam[1])**2, 1/2)
     return len_part
-
 
 def get_pickup_path(flag):
     """优化拾取路径"""
@@ -145,7 +180,7 @@ def get_pickup_path(flag):
             best_path = ans1 if dist1 < dist2 else ans2
             best_dist = min(dist1, dist2)
         else:
-            sa_pickup = SA_TSP(func=cal_part_distance, x0=range(num_pickup), T_max=t0, T_min=t1, L=20*num_pickup,
+            sa_pickup = SA_TSP(func=cal_part_distance, x0=range(num_pickup), T_max=t0, T_min=t1, L=10*num_pickup,
                                max_stay_counter=150)
             best_path, best_dist = sa_pickup.run()
 
@@ -163,81 +198,80 @@ def get_pickup_path(flag):
 
     return dist
 
-
-
-# get_pickup_path(1)
-#
-# drawer.pickup(pickup_path)
-# cv.waitKey(0)
-# cv.destroyAllWindows()
-
-
-
-
+############################### 全局路径 ##############################################
 ## 定义功能函数
-def routine2path(route):
-    """将一个路线个体装换为实际的贴装头路线，并进行适当优化"""
-    count_list = []  # 每轮贴装完成的贴装点数量
-    order = 0  # 每轮贴装数量的计数变量
+def cal_global_distance(route):
+    """将一个路线个体装换为实际的贴装头路线，并得到全局路径长度"""
+
     global pickup_path, pickup_p0, global_path
     global_path = [nozzle.p0]  # 记录每轮贴装路径
     global_dist = 0
-    requests = np.copy(pcb.alloc)   # 备份每种镍片的贴装任务情况
-    nozzle_num = nozzle.count() # 保留吸嘴杆上的吸嘴数量
+    # requests = np.copy(pcb.alloc)   # 备份每种镍片的贴装任务情况
+    # nozzle_num = nozzle.count() # 保留吸嘴杆上的吸嘴数量
 
     for i in range(num_points):
         # order = order + 1;
         # 每轮贴装前进行拾取镍片
         if sum(nozzle.state) == 0:  # 根据贴装头上的负载情况判断上轮贴装是否完成
-            # order = 1   # 新的一轮贴装循环，重置计算变量
-
-            count = 0   # 本轮贴装循环所完成贴装点数
-
             # 重置拾取路径
             pickup_path = []
 
             pickup_p0 = global_path[-1]
+            if not i==0:
+                global_path.append(-1)  # 循环分隔符
 
-            # 判断是否需要更换吸嘴
-            flag = 0 # 更换吸嘴标志
-            need = requests - nozzle_num
-            if np.any(need < 0): # 当变量中存在负数，则表示若不更换吸嘴则可能存在吸嘴空载
-                change = np.where(need < 0)[0] # 需要更换的吸嘴类型
-                number = -sum(need[change]) # 可更换吸嘴数量
-                index = np.array([], dtype=int) # 保存可更换吸嘴所在杆索引
-                for change_type in change:
-                    change_num = -need[change_type] # 该贴装头上该类吸嘴可更换的数量
-                    options = np.where(nozzle.type == change_type)[0]
-                    index = np.concatenate([index, options[-change_num:]])
+            # # 判断是否需要更换吸嘴
+            # flag = 0 # 更换吸嘴标志
+            # need = requests - nozzle_num
+            # goal = nozzle_num # 设置拾取目标
+            # if np.any(need < 0): # 当变量中存在负数，则表示若不更换吸嘴则可能存在吸嘴空载
+            #     if np.any(need > 0): # 在当前吸嘴配置下，若剩下的贴装任务无法一次性完成，则进行更换吸嘴
+            #         flag = 1 # 更换吸嘴标志
+            #         change = np.where(need < 0)[0] # 需要更换的吸嘴类型
+            #         number = -sum(need[change]) # 可更换吸嘴数量
+            #         index = np.array([], dtype=int) # 保存可更换吸嘴所在杆索引
+            #         for change_type in change:
+            #             change_num = -need[change_type] # 该贴装头上该类吸嘴可更换的数量
+            #             options = np.where(nozzle.type == change_type)[0]
+            #             index = np.concatenate([index, options[-change_num:]])
+            #
+            #     # if np.any(need > 0): # 在当前吸嘴配置下，若剩下的贴装任务无法一次性完成，则进行更换吸嘴
+            #     #     flag = 1 # 更换吸嘴标志
+            #         nozzle_num[change] = nozzle_num[change] + need[change] # 卸载
+            #         need[change] = 0 # 调整需求
+            #         target_type = np.array([], dtype=int) # 保存所更换的吸嘴类型
+            #         while number > 0 and sum(need) != 0:
+            #             # 贴装头上的空位且贴装需求不为零时进行安装吸嘴
+            #             # 对贴装任务较多的镍片种类优先进行分配吸嘴
+            #             max_value = np.max(need)
+            #             max_index = np.argmax(need)
+            #             if max_value >= number:
+            #                 # 当该种镍片的需求大于可更换吸嘴的数量，则将吸嘴全换成该种镍片对应的吸嘴
+            #                 nozzle_num[max_index] = nozzle_num[max_index] + number
+            #                 new = np.repeat(max_index, number)
+            #                 target_type = np.concatenate([target_type, new])
+            #                 number = 0 # 更换吸嘴清空，结束循环
+            #             else:
+            #                 # 当该种镍片的需求小于可更换吸嘴的数量，则根据需求换成相应所吸嘴
+            #                 nozzle_num[max_index] = nozzle_num[max_index] + max_value
+            #                 new = np.repeat(max_index, max_value)
+            #                 target_type = np.concatenate([target_type, new])
+            #                 number = number - max_value
+            #                 need[max_index] = 0 # 该镍片需求清空，继续循环
+            #         nozzle.update(index, target_type) # 执行吸嘴更换操作
+            #     else:
+            #         # 修改拾取目标
+            #         goal = requests
 
-                if np.any(need > 0): # 在当前吸嘴配置下，若剩下的贴装任务无法一次性完成，则进行更换吸嘴
-                    flag = 1 # 更换吸嘴标志
-                    nozzle_num[change] = nozzle_num[change] + need[change] # 卸载
-                    need[change] = 0 # 调整需求
-                    target_type = np.array([], dtype=int) # 保存所更换的吸嘴类型
-                    while number > 0 and sum(need) != 0:
-                        # 贴装头上的空位且贴装需求不为零时进行安装吸嘴
-                        # 对贴装任务较多的镍片种类优先进行分配吸嘴
-                        max_value = np.max(need)
-                        max_index = np.argmax(need)
-                        if max_value >= number:
-                            # 当该种镍片的需求大于可更换吸嘴的数量，则将吸嘴全换成该种镍片对应的吸嘴
-                            nozzle_num[max_index] = nozzle_num[max_index] + number
-                            new = np.repeat(max_index, number)
-                            target_type = np.concatenate([target_type, new])
-                            number = 0 # 更换吸嘴清空，结束循环
-                        else:
-                            # 当该种镍片的需求小于可更换吸嘴的数量，则根据需求换成相应所吸嘴
-                            nozzle_num[max_index] = nozzle_num[max_index] + max_value
-                            new = np.repeat(max_index, max_value)
-                            target_type = np.concatenate([target_type, new])
-                            number = number - max_value
-                            need[max_index] = 0 # 该镍片需求清空，继续循环
-                    nozzle.update(index, target_type) # 执行吸嘴更换操作
+
+            plan = plan_pick[i//8]
+            flag = flags[i//8]
+            if flag == 1:
+                nozzle.update(plan)
 
             # 到此为止，拾取过程已确定本轮拾取的镍片数量以及种类
-            # 根据nozzle_num进行镍片拾取工作
-            for t, num in enumerate(nozzle_num):
+            # 根据拾取目标goal进行镍片拾取工作
+            for t, num in enumerate(plan):
                 if num == 0:
                     continue
                 # 查询该类吸嘴所在位置
@@ -258,52 +292,47 @@ def routine2path(route):
         current_type = pcb.type[route[i]]
         option = np.where((nozzle.type == current_type) & (nozzle.state == 1))[0]
         if len(option) == 0:
-            # 调整贴装顺序，以保证吸嘴尽可能满载
-            left_num = sum(nozzle.state)
-            current_type = np.argmax(nozzle.count(True) - pcb.count(route[i, i+left_num]))
-            temp = np.array([pcb.type[i] for i in route])
-            exchange = np.where(temp == current_type)[0][-1]
-            # 交换贴装顺序
-            temp = route[i]
-            route[i] = route[exchange]
-            route[exchange] = temp
-
-            option = np.where((nozzle.type == current_type) & (nozzle.state == 1))[0]
+            raise Exception("无效贴装")
+        #     # 调整贴装顺序，以保证吸嘴尽可能满载
+        #     left_num = sum(nozzle.state)
+        #     current_type = np.argmax(nozzle.count(True) - pcb.count(route[i:i+left_num]))
+        #     temp = pcb.type[route]
+        #     # temp = np.array([pcb.type[i] for i in route])
+        #     exchange = np.where(temp == current_type)[0][-1]
+        #     # 交换贴装顺序
+        #     temp = route[i]
+        #     route[i] = route[exchange]
+        #     route[exchange] = temp
+        #
+        #     option = np.where((nozzle.type == current_type) & (nozzle.state == 1))[0]
 
         # 移动至该贴装点
         opt = option[0]
+
         # 坐标变换
         new_point = pcb.point[route[i]] - nozzle.dist[opt]
         global_dist = global_dist + cal_distance(global_path[-1], new_point)
         global_path.append(new_point.tolist())
         # 更新吸嘴状态
         nozzle.state[opt] = 0
-        requests[current_type] = requests[current_type] - 1
+        # requests[current_type] = requests[current_type] - 1
+
+    return global_dist
 
 
 
+############################### 拾取路径 ##############################################
 
-
-
-
-
-
-
-            
-
-
-
-
-
-
-
-
-
-
-
-
-
-def cal_global_distance(route):
-    """计算单个贴装路线的贴装总距离"""
-
-
+route_test = np.array(range(num_points))
+np.random.shuffle(route_test)
+print(route_test)
+route_test = check_fix(route_test)
+print(f"修正工作完成，时间：{time.time() - start:.5f}秒")
+# check_fix(route_test)
+print(route_test)
+print(cal_global_distance(route_test))
+print(f"计算工作完成，时间：{time.time() - start:.5f}秒")
+drawer.global_process(global_path)
+print(f"绘制工作完成，时间：{time.time() - start:.5f}秒")
+cv.waitKey(0)
+cv.destroyAllWindows()

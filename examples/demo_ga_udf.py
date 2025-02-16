@@ -1,5 +1,6 @@
 # step1: define your own operator:
 def selection_tournament(algorithm, tourn_size):
+    """锦标赛选择"""
     FitV = algorithm.FitV
     sel_index = []
     for i in range(algorithm.size_pop):
