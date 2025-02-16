@@ -32,6 +32,7 @@ nozzle = Nozzle()
 
 ############################### 测试代码 ##############################################
 ############################### 测试代码 ##############################################
+
 ############################### 准备工作 ##############################################
 start = time.time()
 def arrange_work():
@@ -115,6 +116,13 @@ def check_fix(new_route):
             current[goal_type] = current[goal_type] + 1
             current[current_type] = current[current_type] - 1
     return new_route
+
+def check_fix_chrom(chrom, size):
+    """以种群为单位进行检验与修正"""
+    for i in range(size):
+        chrom[i, :] = check_fix(chrom[i, :])
+    return chrom
+
 print(f"准备工作完成，时间：{time.time() - start:.5f}秒")
 ############################### 拾取路径 ##############################################
 
@@ -319,6 +327,48 @@ def cal_global_distance(route):
 
     return global_dist
 
+from sko.operators import ranking, selection, crossover, mutation
+
+def crossover_udf(algorithm):
+    """自定义交叉过程"""
+    size_pop = algorithm.size_pop
+    chrom = crossover.crossover_2point(algorithm)
+    algorithm.Chrom = check_fix_chrom(chrom, size_pop)
+    return algorithm.Chrom
+
+def mutation_tsp(algorithm):
+    """将同种镍片的贴装点顺序交换"""
+    chrom = algorithm.Chrom
+    for i in range(algorithm.size_pop):
+        for j in range(algorithm.n_dim):
+            if np.random.rand() < algorithm.prob_mut:
+                current_type = pcb.type[chrom[i, j]]
+                types = pcb.type[chrom[i,:]]
+                options = np.where(types == current_type)[0]
+                n = np.random.randint(0, len(options), 1)
+                chrom[i, j], chrom[i, n] = chrom[i, n], chrom[i, j]
+    algorithm.Chrom = chrom
+    return algorithm.Chrom
+
+
+def mutation_udf(algorithm):
+    """
+    自定义变异过程
+    变异方式一共3中，每次随机选择其中一种
+    """
+    size_pop = algorithm.size_pop
+    strategy = np.random.randint(3)
+    if strategy == 0:
+        """逆转变异"""
+        chrom = mutation.mutation_reverse(algorithm)
+        algorithm.Chrom = check_fix_chrom(chrom, size_pop)
+    elif strategy == 1:
+        """片段交换"""
+        chrom = mutation.mutation_swap(algorithm)
+        algorithm.Chrom = check_fix_chrom(chrom, size_pop)
+    elif strategy == 2:
+        algorithm.Chrom = mutation_tsp(algorithm)
+    return algorithm.Chrom
 
 
 ############################### 拾取路径 ##############################################
