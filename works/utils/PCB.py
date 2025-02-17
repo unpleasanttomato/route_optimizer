@@ -94,7 +94,11 @@ class Nozzle:
             self.type[option] = goal_type
             nozzle_num[current_type] = nozzle_num[current_type] - 1
             nozzle_num[goal_type] = nozzle_num[goal_type] + 1
-        
+
+    def reset(self):
+        """重置贴装头变量"""
+        self.type = np.array(range(self.num_type))
+        self.state = np.zeros(8).astype(np.uint8)
 
 
 

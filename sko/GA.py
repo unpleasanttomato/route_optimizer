@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2019/8/20
 # @Author  : github.com/guofei9987
-
+import time
 
 import numpy as np
 from .base import SkoBase
@@ -503,6 +503,7 @@ class GA_TSP(GeneticAlgorithmBase):
     def run(self, max_iter=None):
         self.max_iter = max_iter or self.max_iter
         for i in range(self.max_iter):
+            t = time.time()
             Chrom_old = self.Chrom.copy()
             self.X = self.chrom2x(self.Chrom)
             self.Y = self.x2y()
@@ -512,9 +513,14 @@ class GA_TSP(GeneticAlgorithmBase):
             self.mutation()
 
             # put parent and offspring together and select the best size_pop number of population
+            self.X = self.chrom2x(self.Chrom)
+            Y_old = self.Y.copy()
+            self.Y = self.x2y()
+
             self.Chrom = np.concatenate([Chrom_old, self.Chrom], axis=0)
             self.X = self.chrom2x(self.Chrom)
-            self.Y = self.x2y()
+            # self.Y = self.x2y()
+            self.Y = np.concatenate([Y_old, self.Y], axis=0)
             self.ranking()
             selected_idx = np.argsort(self.Y)[:self.size_pop]
             self.Chrom = self.Chrom[selected_idx, :]
@@ -525,6 +531,9 @@ class GA_TSP(GeneticAlgorithmBase):
             self.generation_best_Y.append(self.Y[generation_best_index])
             self.all_history_Y.append(self.Y.copy())
             self.all_history_FitV.append(self.FitV.copy())
+            print(f"第{i+1}轮迭代：")
+            print(f"\t用时：{(time.time() - t)/60:.5}分")
+            print(f"\t当前最优值：{self.Y[generation_best_index]}")
 
         global_best_index = np.array(self.generation_best_Y).argmin()
         self.best_x = self.generation_best_X[global_best_index]

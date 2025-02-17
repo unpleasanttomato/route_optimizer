@@ -7,7 +7,7 @@ from utils.PCB import PCB, Nozzle
 from sko.SA import SA_TSP
 import cv2 as cv
 import time
-
+# import matplotlib.pyplot as plt
 drawer = MyDrawer()
 drawer.background()
 #
@@ -35,7 +35,17 @@ nozzle = Nozzle()
 ############################### 测试代码 ##############################################
 
 ############################### 准备工作 ##############################################
-start = time.time()
+
+
+def reset():
+    """重置全局变量，保证每次重新拾取时，全局变量一致"""
+    global global_path, pickup_p0, pickup_path, nozzle
+    global_path = None
+    pickup_p0 = None
+    pickup_path = None
+    nozzle.reset()
+
+
 def arrange_work():
     """根据整体贴装任务，为贴装过程进行规划"""
     # num_loop = 0    # 贴装循环总数
@@ -108,6 +118,11 @@ def check_fix(new_route):
             temp = pcb.type[new_route]
             goal_loc = np.where(temp == goal_type)[0][-1]
             current_loc = np.where(temp[i*8:sec] == current_type)[0][0] + i*8
+            # try:
+            #     idx = np.where(goal_loc > current_loc)[0][-1]
+            # except IndexError:
+            #     raise Exception("有问题")
+            # goal_loc = goal_loc[idx]
 
             # 交换元素
             t = new_route[goal_loc]
@@ -124,7 +139,7 @@ def check_fix_chrom(chrom, size):
         chrom[i, :] = check_fix(chrom[i, :])
     return chrom
 
-print(f"准备工作完成，时间：{time.time() - start:.5f}秒")
+# print(f"准备工作完成，时间：{time.time() - start:.5f}秒")
 ############################### 拾取路径 ##############################################
 
 def cal_distance(p1, p2):
@@ -135,15 +150,12 @@ def cal_part_distance(route):
     """计算拾取过程的局部路径"""
 
     # 从拾取起始点到第一个柔性盘处
-    len_part = np.power((pickup_p0[0] - pickup_path[route[0]][0])**2 +
-                        (pickup_p0[1] - pickup_path[route[0]][1])**2, 1/2)
+    len_part = cal_distance(pickup_p0, pickup_path[route[0]])
     # 拾取过程
     for i in range(len(route) - 1):
-        len_part = len_part + np.power((pickup_path[route[i]][0] - pickup_path[route[i+1]][0])**2 +
-                                       (pickup_path[route[i]][1] - pickup_path[route[i+1]][1])**2, 1/2)
+        len_part = len_part + cal_distance(pickup_path[route[i]], pickup_path[route[i+1]])
     # 拾取完成后，到达底部相机
-    len_part = len_part + np.power((pickup_path[route[-1]][0] - pcb.cam[0])**2 +
-                                   (pickup_path[route[-1]][1] - pcb.cam[1])**2, 1/2)
+    len_part = len_part + cal_distance(pickup_path[route[-1]], pcb.cam)
     return len_part
 
 def get_pickup_path(flag):
@@ -156,19 +168,18 @@ def get_pickup_path(flag):
         # 当拾取前需要更换吸嘴，则将拾取起始点事先加入拾取路径
         # 并将起始点到吸嘴站的路径进行事先预存
         # 再将拾取起始点重置为吸嘴站
-        dist = np.power((pickup_p0[0] - pcb.post[0])**2 +
-                        (pickup_p0[1] - pcb.post[1])**2, 1/2)
+        dist = cal_distance(pickup_p0, pcb.post)
         path.append(pcb.post)
         pickup_p0 = pcb.post
 
     num_pickup = len(pickup_path)
     # 根据问题规模设定温度
     if num_pickup > 6:
-        t0 = 1e4
-        t1 = 1e-4
+        t0 = 1e5
+        t1 = 1
     elif num_pickup > 4:
         t0 = 1e4
-        t1 = 1e-2
+        t1 = 1e-1
     else:
         t0 = 1e2
         t1 = 1e-2
@@ -189,8 +200,8 @@ def get_pickup_path(flag):
             best_path = ans1 if dist1 < dist2 else ans2
             best_dist = min(dist1, dist2)
         else:
-            sa_pickup = SA_TSP(func=cal_part_distance, x0=range(num_pickup), T_max=t0, T_min=t1, L=10*num_pickup,
-                               max_stay_counter=150)
+            sa_pickup = SA_TSP(func=cal_part_distance, x0=range(num_pickup), T_max=t0, T_min=t1, L=7*num_pickup,
+                               max_stay_counter=60)
             best_path, best_dist = sa_pickup.run()
 
             # 显示迭代过程
@@ -207,18 +218,37 @@ def get_pickup_path(flag):
 
     return dist
 
+
+# pickup_p0 = nozzle.p0
+# pickup_path = [[125, 1000], [325, 1000], [525, 1000], [600, 1080],  # 前供料器
+#                            [365, 960], [325, 195], [525, 195], [375, 1050]]
+# index = np.array(range(8))
+# np.random.shuffle(index)
+# pickup_path = [pickup_path[i] for i in index]
+# print(pickup_path)
+# time1 = time.time()
+# print(get_pickup_path(1))
+# print(f"全局用时：{time.time() - time1:.8}秒")
+# drawer.pickup(pickup_path)
+# plt.show()
+
+
 ############################### 全局路径 ##############################################
 ## 定义功能函数
 def cal_global_distance(route):
     """将一个路线个体装换为实际的贴装头路线，并得到全局路径长度"""
-
+    # t1 = time.time()
     global pickup_path, pickup_p0, global_path
+    # 重置全局变量
+    reset()
     global_path = [nozzle.p0]  # 记录每轮贴装路径
     global_dist = 0
     # requests = np.copy(pcb.alloc)   # 备份每种镍片的贴装任务情况
     # nozzle_num = nozzle.count() # 保留吸嘴杆上的吸嘴数量
 
     for i in range(num_points):
+        # print(i)
+        # t2 = time.time()
         # order = order + 1;
         # 每轮贴装前进行拾取镍片
         if sum(nozzle.state) == 0:  # 根据贴装头上的负载情况判断上轮贴装是否完成
@@ -325,7 +355,9 @@ def cal_global_distance(route):
         # 更新吸嘴状态
         nozzle.state[opt] = 0
         # requests[current_type] = requests[current_type] - 1
+        # print(f"一个点用时：{time.time() - t2:.5f}秒")
 
+    # print(f"计算单个路线长度用时：f{time.time() - t1:.5f}秒")
     return global_dist
 
 from sko.operators import ranking, selection, crossover, mutation
@@ -333,11 +365,11 @@ from sko.operators import ranking, selection, crossover, mutation
 def crossover_udf(algorithm):
     """自定义交叉过程"""
     size_pop = algorithm.size_pop
-    chrom = crossover.crossover_2point(algorithm)
+    chrom = crossover.crossover_pmx(algorithm)
     algorithm.Chrom = check_fix_chrom(chrom, size_pop)
     return algorithm.Chrom
 
-def mutation_tsp(algorithm):
+def mutation_swap(algorithm):
     """将同种镍片的贴装点顺序交换"""
     chrom = algorithm.Chrom
     for i in range(algorithm.size_pop):
@@ -358,39 +390,49 @@ def mutation_udf(algorithm):
     变异方式一共3中，每次随机选择其中一种
     """
     size_pop = algorithm.size_pop
-    strategy = np.random.randint(3)
+    strategy = np.random.randint(2)
     if strategy == 0:
         """逆转变异"""
         chrom = mutation.mutation_reverse(algorithm)
-        algorithm.Chrom = check_fix_chrom(chrom, size_pop)
-    elif strategy == 1:
-        """片段交换"""
-        chrom = mutation.mutation_swap(algorithm)
-        algorithm.Chrom = check_fix_chrom(chrom, size_pop)
-    elif strategy == 2:
-        algorithm.Chrom = mutation_tsp(algorithm)
+    else:
+        chrom = mutation_swap(algorithm)
+    algorithm.Chrom = check_fix_chrom(chrom, size_pop)
     return algorithm.Chrom
 
 
 ############################### 拾取路径 ##############################################
 
-ga_paste = GA_TSP(func=cal_global_distance, n_dim=num_points, size_pop=60, max_iter=600, prob_mut=0.5)
+ga_paste = GA_TSP(func=cal_global_distance, n_dim=num_points, size_pop=50, max_iter=500, prob_mut=0.5)
 ga_paste.register('selection', selection.selection_tournament, tourn_size=3)
 ga_paste.register('crossover', crossover_udf)
 ga_paste.register('mutation', mutation_udf)
 
-best_route, best_distance = ga_paste.run()
+# 修正初始种群
+ga_paste.Chrom = check_fix_chrom(ga_paste.Chrom, ga_paste.size_pop)
 
-route_test = np.array(range(num_points))
-np.random.shuffle(route_test)
-print(route_test)
-route_test = check_fix(route_test)
-print(f"修正工作完成，时间：{time.time() - start:.5f}秒")
-# check_fix(route_test)
-print(route_test)
-print(cal_global_distance(route_test))
-print(f"计算工作完成，时间：{time.time() - start:.5f}秒")
+start = time.time()
+best_route, _ = ga_paste.run()
+print(f"迭代完成，用时：{(time.time() - start)/60 : .2}分钟")
+#
+#
+# 分析优化结果
+import matplotlib.pyplot as plt
+best_distance = cal_global_distance(best_route)
+print(f"Best Distance: {best_distance}, 用时{time.time() - start:.5f}秒")
 drawer.global_process(global_path)
-print(f"绘制工作完成，时间：{time.time() - start:.5f}秒")
+
+fig, ax = plt.subplots(1, 1)
+ax.plot(ga_paste.generation_best_Y)
+ax.set_xlabel("Iteration")
+ax.set_ylabel("Distance")
+plt.show()
+
+# route = np.array(range(num_points))
+# print(route)
+# np.random.shuffle(route)
+# print(route)
+# check_fix(route)
+# print(route)
+# cal_global_distance(route)
 cv.waitKey(0)
 cv.destroyAllWindows()

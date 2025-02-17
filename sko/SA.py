@@ -218,7 +218,7 @@ class SA_TSP(SimulatedAnnealingBase):
 
     def get_new_x(self, x):
         x_new = x.copy()
-        new_x_strategy = np.random.randint(3)
+        new_x_strategy = np.random.randint(2)
         if new_x_strategy == 0:
             x_new = mutation.swap(x_new)
         elif new_x_strategy == 1:

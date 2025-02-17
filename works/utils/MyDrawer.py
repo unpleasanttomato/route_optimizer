@@ -49,15 +49,15 @@ class MyDrawer:
         cv.circle(self.image, points[-1], 3, (255, 0, 0), -1)
         cv.imshow("Pickup Process", self.image)
 
-    def global_process(self, route):
+    def global_process(self, path):
         """绘制镍片贴装与拾取的整体路线图"""
         # 保存不同循环的路线图
         order = 0
         images = []
         img = self.image.copy()
-        cv.circle(img, route[0], 3, (255, 0, 0), -1)
-        for i in range(1, len(route)+1):
-            if i == len(route) or route[i] == -1:
+        cv.circle(img, path[0], 3, (255, 0, 0), -1)
+        for i in range(1, len(path) + 1):
+            if i == len(path) or path[i] == -1:
                 order = order + 1
                 # 遇到循环分隔符，则新建画板
                 # 先保存图像
@@ -66,15 +66,15 @@ class MyDrawer:
                 # cv.imshow(f"第{order}轮拾取贴装", img)
                 cv.imwrite(f"Round_{order}.png", img)
                 images.append(img.copy())
-                if i == len(route):
+                if i == len(path):
                     break
                 img = self.image.copy()
                 # 修正分隔符
-                route[i] = route[i-1]
+                path[i] = path[i - 1]
             else:
-                cv.line(img, route[i-1], route[i], (0, 0, 255), 2)
+                cv.line(img, path[i - 1], path[i], (0, 0, 255), 2)
 
-            cv.circle(img, route[i], 3, (255, 0, 0), -1)
+            cv.circle(img, path[i], 3, (255, 0, 0), -1)
 
 
 
